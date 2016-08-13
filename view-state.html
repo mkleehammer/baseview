@@ -1,0 +1,13 @@
+{{#ne state "blank"}}
+<div class="view-state">
+  {{#eq state "loading"}}
+  <img src="/static/img/ajax-loader.gif"> Loading...
+  {{/eq}}
+  {{#eq state "not-found"}}
+    Not Found
+  {{/eq}}
+  {{#eq state "invalid"}}
+    Invalid View State: {{state}}
+  {{/eq}}
+</div>
+{{/ne}}

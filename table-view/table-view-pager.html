@@ -1,0 +1,31 @@
+{{#ne pages 1}}
+  <nav>
+    <ul class="pagination">
+      <li{{#unless prevPage}} class="disabled"{{/unless}}>
+        <a href="#{{prevPage}}"><span class="fa fa-angle-left"></span></a>
+      </li>
+
+      {{#ne start 1}}
+        <li><a href="#1">1</a></li>
+        <li class="disabled"><a href="#">...</a></li>
+      {{/ne}}
+
+      {{#series start stop}}
+        {{#eq this ../current}}
+          <li class="active"><a href="#">{{this}}</a></li>
+        {{else}}
+          <li><a href="#{{this}}">{{this}}</a></li>
+        {{/eq}}
+      {{/series}}
+
+      {{#ne stop pages}}
+        <li class="disabled"><a href="#">...</a></li>
+        <li><a href="#{{pages}}">{{pages}}</a></li>
+      {{/ne}}
+
+      <li {{#unless nextPage}}class="disabled"{{/unless}}>
+        <a href="#{{nextPage}}"><span class="fa fa-angle-right"></span></a>
+      </li>
+    </ul>
+  </nav>
+{{/ne}}

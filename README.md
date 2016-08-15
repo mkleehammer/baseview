@@ -1,7 +1,7 @@
 
-# BaseView Classes
+# BaseView
 
-A set of classes that derive from Backbone's View to add commonly needed functionality.
+A Backbone.View subclass that adds commonly needed functionality.
 
 > **Note**: This project is the merger of a bunch of private copies of this code that I've been
 > porting and maintaining for years.  You will not be able to use this directly without some
@@ -9,51 +9,50 @@ A set of classes that derive from Backbone's View to add commonly needed functio
 > and `SchemaCache`, but I'll try to factor these out.  I've extracted this for my own benefit
 > but you might find it useful.
 
-The base class is **BaseView** which can be used for any view.  **BaseModalView** provides
-additional functionality for working with Bootstrap 3 modals.
+## Child View Clean Up
 
-**TableView** provides a wrapper around HTML tables.  It stores its data as an array of
-Javascript objects and dynamically populates the table.
+"Zombies" are a common issue in Backbone.  You can find lots of articles on it and even
+frameworks like Marionette and Layout to eliminate them.
 
-## BaseView
+When a view is removed with `view.remove()`, it is cleaned up properly.  Note that jQuery will
+handle removing all event handlers added for the `events` hash.  Backbone event handlers,
+however, need to be removed so `stopListening` is called.
 
-### cleanUp
+When a view is removed indirectly because its DOM element was removed, via a parent render for
+example, the jQuery events are cleaned up but `view.remove()` is *not* called.
 
-The most important functionality is hooking into jQuery's undocumented cleanup system to
-make sure that event handlers are cleaned up when a view's HTML element is destroyed. If
-you need custom clean up you may override the cleanUp method but you *must* call the
-original.
+To fix this, we hook into jQuery's clean up system and call a 'baseview-remove' event handler
+on each jQuery element.  BaseView adds a handler for this event which calls `stopListening`.
 
-> I need to make a new function `_cleanUp` and have *it* call `cleanUp`, eliminating the need
-> for subclasses to call `BaseView.cleanUp`.  I'm not concerned with the difficulty in calling
-> a base class, but with the fact that it *will* be forgotten somewhere.  Why wait for the bug?
+> The event handler cannot call `Backbone.View.remove()` since that function could have already
+> been called and triggered the DOM removal, leading to an infinite loop.
 
-### render
+Note that if you want to *temporarily* remove a view you should use `jQuery.detach`, not
+remove.  jQuery's event handler cleanup occurs when `$.remove` is called so all of your event
+handlers would be removed.  You can use `Backbone.View.delegateEvents` to reconnect them, but
+any backbone events, such as collections listeners you added in initialize, will have been
+disconnected, along with anything you've done in `cleanUp` (below).
 
-A default render implementation is provided that will render a Handlebars template that
-is set using the `template` member.  (If not provided the method does nothing.)  By
-default the template context is the view itself, so you can use all variables assigned.
-You can easily override this in two ways:
+## Other Clean Up
 
-You can reduce nesting by choosing a single attribute for the template by setting the
-`templateContext` to the name of the attribute:
+Since there are other resources you might want to clean up reliably, a `cleanUp` method has
+been added that is called when the view is removed from the DOM (via the child view clean up).
 
-  templateContext: 'patient'
+## render
 
-If you need more control, override the `getTemplateContext` function and return a
-context object.
+A default render implementation is provided that will render a Handlebars template that is set
+using the `template` member.  (If `template` is not set, the default render method does
+nothing.)
 
-### init promises
+The default template context (the object passed to the template function) is the view itself.
+If you want a particular property to be passed instead, set its name as `templateContext`:
 
-Often you have views that require one or more asynchronous calls to complete before they
-are "initialized".  The built-in view states are handy for displaying a loading message
-while one or more ajax calls complete.  To make it easy to coordinate multiple
-asynchronous calls, this class allows addInitPromise to be called multiple times from
-initialize, in both subclasses and Cocktails mixins.  If used, onInitPromisesResolved is
-called after all of the promises resolve and the default implementation sets the view
-state to normal.  If any fail, onInitPromisesFailed is called.
+    templateContext: 'patient'
 
-### view states
+For even more control, override the `getTemplateContext` method and return the object you want
+passed to the template.
+
+## view states
 
 Often you need "loading" or "not found" style views and creating new classes for them
 can be a pain.  Mingling them with your main view class can be messy however.  BaseView
@@ -72,6 +71,19 @@ will not call getTemplateContext or postRender.
 
 To set the view state back to normal, call `setVewNormal` which will clear the view
 state and re-render, this time calling getTemplateContext and postRender.
+
+> This implementation is very hardcoded to what I needed.  It needs to be made more generic.
+> The template can be changed, but perhaps we should make a setViewState(name).
+
+## init promises
+
+Often you have views that require one or more asynchronous calls to complete before they are
+really initialized.  The built-in view states are handy for displaying a loading message while
+one or more ajax calls complete.  To make it easy to coordinate multiple asynchronous calls,
+this class allows addInitPromise to be called multiple times from initialize, in both
+subclasses and Cocktails mixins.  If used, onInitPromisesResolved is called after all of the
+promises resolve and the default implementation sets the view state to normal.  If any fail,
+onInitPromisesFailed is called.
 
 The default implementation of init promises does this automatically.  The first init
 promise sets the view state to "loading" if not already set.  When all init promises
@@ -95,18 +107,18 @@ the promise completes ($.ajax returns a promise), the success function runs whic
 the data.  Then onInitPromiseResolved is called which clears the view state and
 re-renders, allowing `this.data` to be used in the template.
 
-### autofocus
+## autofocus
 
 Set to a name string (e.g. "input[name=ssn]") and focus will be set to the matching
 element.  If you do nothing, focus will be set to the first element with the autofocus
 attribute or to the first input.  Set `this.autofocus: false` to disable this.
 
-### event merging
+## event merging
 
 Backbone only uses the first `events` hash it finds in a heirarchy.  This class merges
 events for the entire heirarchy so you can add or override events in subclasses.
 
-### backboneEvents
+## backboneEvents
 
 Adds event handlers that listen for events on the global Backbone object which this
 project uses as a global event bus.  The syntax is similar to the events hash:
@@ -121,10 +133,4 @@ use a different event bus.  Backbone itself is a global object that derives from
 Backbone.Events and can be used as a global event bus.  Just make sure your event names
 are unique since they are visible to the entire page.
 
-### warning button support
-
-TODO
-
-## BaseModal
-
-## TableView
+## warning button support

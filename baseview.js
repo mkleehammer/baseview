@@ -23,9 +23,9 @@ define('BaseView', function() {
 
       delete this.__initializing;
 
-      this.$el.on('destroyed', this, function(event) {
+      this.$el.on('baseview-removed', this, function(event) {
         var view = event.data;
-        view.cleanUp();
+        view._cleanUp();
       });
 
       if (this.backboneEvents)
@@ -120,14 +120,13 @@ define('BaseView', function() {
       }
     },
 
-    cleanUp: function() {
-      // This is called when the HTML element is removed from the page.  If you override this,
-      // you *must* call the BaseView version.
-
-      // It doesn't look like view.remove() always gets called, but you certainly can't call it
-      // from inside of itself :)  I'll copy the important things from it and call them here.
-
+    _cleanUp: function() {
       this.stopListening();
+      this.cleanUp();
+    },
+
+    cleanUp: function() {
+      // If you override, don't forget to call the parent class' version.
     },
 
     remove: function() {
@@ -335,29 +334,28 @@ define('BaseView', function() {
     }
   });
 
-  // The BaseView *class* is also an Events instance so we can emit events when
-  // views are created and deleted.  This is an easy hook to allow testing
-  // frameworks to monitor things.
+  // The BaseView *class* is also an Events instance so we can emit events when views are
+  // created and deleted.  This is an easy hook to allow testing frameworks to monitor things.
 
   _.extend(BaseView, Backbone.Events);
 
   // http://stackoverflow.com/a/7989120
   //
-  // This is a major hack, but it works well :)  We need to clean up after our views, even when
-  // parent views blow away all child views using `this.$el.html()`.  Fortunately jQuery has the
-  // same need and solves it by calling $.cleanData for every DOM element that has a jQuery
+  // This is a major hack, but it works well :) We need to clean up after our views, even when
+  // parent views blow away all child views using `this.$el.html()`.  Fortunately jQuery has
+  // the same need and solves it by calling $.cleanData for every DOM element that has a jQuery
   // object when it is removed from the DOM.  We simply hook into that and see if there are
   // views.
 
-  (function($) {
-    var oldClean = jQuery.cleanData;
-    $.cleanData = function(elems) {
-      for (var i = 0, c = elems.length; i < c; i++) {
-        $(elems[i]).triggerHandler('destroyed');
-      }
-      oldClean(elems);
-    };
-  })(jQuery);
+  var oldClean = jQuery.cleanData;
+
+  $.cleanData = function(elems) {
+    // Note: If you convert this to an actual event, make sure it does not bubble up.
+    for (var i = 0, c = elems.length; i < c; i++) {
+      $(elems[i]).triggerHandler('baseview-removed');
+    }
+    oldClean(elems);
+  };
 
   return BaseView;
 });

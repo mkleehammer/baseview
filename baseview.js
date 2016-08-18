@@ -157,22 +157,24 @@ define('BaseView', function() {
 
         this.renderTemplate(this.template, ctx);
 
-        var autofocus = this.autofocus ? $(this.autofocus) : this.$('[autofocus]');
+        if (this.autofocus !== false) {
+          var autofocus = this.autofocus ? $(this.autofocus) : this.$('[autofocus]');
 
-        // Since this.el hasn't been added to the DOM yet (that usually happens
-        // after this method returns), set focus afterwards.  This also allows us
-        // to perform the search for visible items.
-        setTimeout(function() {
-          if (autofocus.length === 0) {
-            // Autofocus has not been explicitly set so set it to the first visible,
-            // enabled component.
-            autofocus = this.$('input,textarea,select').filter(':visible:enabled:first');
-          }
+          // Since this.el hasn't been added to the DOM yet (that usually happens
+          // after this method returns), set focus afterwards.  This also allows us
+          // to perform the search for visible items.
+          setTimeout(function() {
+            if (autofocus.length === 0) {
+              // Autofocus has not been explicitly set so set it to the first visible,
+              // enabled component.
+              autofocus = this.$('input,textarea,select').filter(':visible:enabled:first');
+            }
 
-          if (autofocus.length)
-            autofocus.focus();
+            if (autofocus.length)
+              autofocus.focus();
 
-        }.bind(this), 0);
+          }.bind(this), 0);
+        }
       }
 
       this.postRender();

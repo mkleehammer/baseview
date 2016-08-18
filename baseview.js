@@ -95,6 +95,7 @@ define('BaseView', function() {
           this.render();
         }
       }
+      return this;
     },
 
     setViewLoading: function() {
@@ -104,6 +105,7 @@ define('BaseView', function() {
           this.render();
         }
       }
+      return this;
     },
 
     setViewNotFound: function() {
@@ -111,6 +113,7 @@ define('BaseView', function() {
       if (this.el) {
         this.render();
       }
+      return this;
     },
 
     setViewNormal: function() {
@@ -118,6 +121,7 @@ define('BaseView', function() {
       if (this.el) {
         this.render();
       }
+      return this;
     },
 
     _cleanUp: function() {

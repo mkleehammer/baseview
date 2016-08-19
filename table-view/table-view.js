@@ -485,7 +485,7 @@ define('TableView', function() {
       // width without word wrapping the split button.  Until we find a better
       // way, dynamically size the column the first time it is rendered.
       var first = this.$('th:first');
-      first.html(Handlebars.templates.table_view_checkheader());
+      first.html(Handlebars.templates['baseview/table-view/table-view-checkheader']());
       var padding = 12; // trial and error - need to research this
       var width = first.find('.btn-group').outerWidth() + padding;
       first.css({ width: width + 'px' });
@@ -521,7 +521,7 @@ define('TableView', function() {
 
       this.showingCheckboxes = true;
 
-      this.$('thead tr').prepend(Handlebars.templates['components/tables/table-view-checkheader']());
+      this.$('thead tr').prepend(Handlebars.templates['baseview/table-view/table-view-checkheader']());
 
       if (options && options.initialValue !== undefined) {
         var cp = this.checkboxProperty;

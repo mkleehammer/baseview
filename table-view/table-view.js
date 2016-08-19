@@ -32,6 +32,9 @@ define('TableView', function() {
 
     initialize: function(options) {
 
+      // Did you forget to update an old table and rename "rows" to "data"?
+      console.assert(options.data != null && options.rows == null);
+
       options = $.extend({}, defaultOptions, options);
 
       this.$header = this.$el.find('thead');

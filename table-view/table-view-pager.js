@@ -33,7 +33,7 @@ define('TableViewPager', function() {
       //
 
       var page  = this.table.page;
-      var pages = Math.ceil(this.table.rows.length / this.table.pageSize);
+      var pages = Math.ceil(this.table.data.length / this.table.pageSize);
 
       var ctx = {
         pages:    pages,

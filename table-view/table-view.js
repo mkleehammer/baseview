@@ -15,7 +15,6 @@ define('TableView', function() {
   var defaultOptions = {
     pageSize: 1000000,
     checkboxes: false,
-    detailRows: {},
     checkboxProperty: '__checked'
   };
 
@@ -82,6 +81,76 @@ define('TableView', function() {
 
       if (this.data.length)
         this.renderPage();
+    },
+
+    _hasChild: function(tableIndex) {
+      // This is intended to be used by the Row class.  You can use use this if you need to,
+      // but it would be better to get a Row instead.
+
+      var el = this._elementFromTableIndex(tableIndex);
+      return el.hasClass('table-view-parent');
+    },
+
+    _createChild: function createChild(tableIndex, options) {
+      if (tableIndex < 0)
+        throw new Error('Cannot create a child row for a row that has been deleted from the table.');
+
+      var parent = this._elementFromTableIndex(tableIndex);
+
+      if (parent.length === 0)
+        throw new Error('Child rows can only be added to visible rows');
+
+      if (parent.hasClass('table-view-parent'))
+        throw new Error('This row already has a child!');
+
+      var content = options.content;
+
+      if ($.isFunction(content)) {
+        content = content(options.context || this.data[tableIndex]);
+      }
+
+      if (content == null)
+        throw new Error('No content was provided for the child row');
+
+      var classNames = 'table-view-child';
+      if (this.showingCheckboxes && parent.hasClass('warning'))
+        classNames += ' warning';
+
+      var child = $('<tr class="' + classNames + '">');
+
+      var colspan = options.offset || this.columns.length;
+
+      if (options.offset) {
+        child.append('<td colspan="' + options.offset + '"></td>');
+
+        if (!options.colspan)
+          colspan -= options.offset;
+      }
+
+      var td = $('<td colspan="' + colspan + '">');
+      td.append(content);
+      child.append(td);
+
+      parent
+        .addClass('table-view-parent')
+        .after(child);
+    },
+
+    _removeChild: function _removeChild(tableIndex) {
+      if (tableIndex < 0)
+        throw new Error('Cannot create a child row for a row that has been deleted from the table.');
+
+      var parent = this._elementFromTableIndex(tableIndex);
+
+      if (parent.length === 0)
+        throw new Error('Child rows only exist on visible rows');
+
+      if (!parent.hasClass('table-view-parent'))
+        throw new Error('This row does not have a child!');
+
+      parent
+        .removeClass('table-view-parent')
+        .next().remove();
     },
 
     setFilter: function(filter) {
@@ -165,7 +234,7 @@ define('TableView', function() {
       //
       // since each item is complete.
       //
-      // This is complicated when we include views instead of strings for detail rows.  A view
+      // This is complicated when we include views instead of strings for child rows.  A view
       // generates an HTML element, not a string (view.el or view.$el).  For this to work, we
       // need generate the appropriate "<tr>...</tr>", turn it into an actual element, and then
       // insert the view's element into the newly created row.
@@ -229,9 +298,9 @@ define('TableView', function() {
         if (detail) {
           var tr = [];
           if (showingCheckboxes && item.__checked)
-            tr.push('<tr class="detail-row warning">');
+            tr.push('<tr class="table-view-child warning">');
           else
-            tr.push('<tr class="detail-row">');
+            tr.push('<tr class="table-view-child">');
           if (showingCheckboxes)
             tr.push('<td></td>');
           if (detail.skipCols)
@@ -271,14 +340,12 @@ define('TableView', function() {
       var index = (this.page * this.pageSize) + pageIndex;
       //          rows before this page       + rows on this page
 
-      // If there are detail rows above this one, they don't count since they don't correspond
+      // If there are child rows above this one, they don't count since they don't correspond
       // to elements in `this.data`.
 
-      if (this.details) {
-        var tr = this.$('> tbody > tr:nth-child(' + (pageIndex+1) + ')');
-        var prev = tr.prevAll('tr.detail-row');
-        index -= prev.length;
-      }
+      var tr = this.$('> tbody > tr:nth-child(' + (pageIndex+1) + ')');
+      var prev = tr.prevAll('tr.table-view-child');
+      index -= prev.length;
 
       return index;
     },
@@ -294,32 +361,28 @@ define('TableView', function() {
 
       var pageIndex = this.pageSize ? (index - (this.page * this.pageSize)) : index;
 
-      if (this.details) {
-        // There might be detail-rows on the page which are not included in `this.data`.  (They
+        // There might be child rows on the page which are not included in `this.data`.  (They
         // are basically extra rows displayed for a single "real row".)
         //
-        // The index we have so far only includes *non-detail* rows.  We can use this index to
-        // find the appropriate TR using ":not(.detail-row):eq(index)", then ask the TR for its
-        // location in the table.  We call that location "page index" meaning "the index for
-        // this page being displayed".
+        // The index we have so far only includes *parent* rows.  We can use this index to find
+        // the appropriate TR using ":not(.table-view-child):eq(index)", then ask the TR for
+        // its location in the table.  We call that location "page index" meaning "the index
+        // for this page being displayed".
         //
         // For example, imagine we calculated 1 so far (meaning the 2nd real row on the page).
         // Given the following table:
         //
-        //     | row          | table-index | page-index
-        //     +--------------+-------------+-----------
-        //     | normal row   |      0      |     0
-        //     |   detail row |             |     1
-        // --> | normal row   |      1      |     2
-        //     | normal row   |      2      |     3
+        //     | row         | table-index | page-index
+        //     +-------------+-------------+-----------
+        //     | parent row  |      0      |     0
+        //     |   child row |             |     1
+        // --> | parent row  |      1      |     2
+        //     | parent row  |      2      |     3
         //
         // the page index should be 2.
 
-        var tr = this.$('tbody > tr:not(.detail-row):eq(' + pageIndex + ')');
-        return tr.index();
-      }
-
-      return pageIndex;
+      var tr = this.$('tbody > tr:not(.table-view-child):eq(' + pageIndex + ')');
+      return tr.index();
     },
 
     tableIndexToPage: function tableIndexToPage(tableIndex) {
@@ -330,8 +393,12 @@ define('TableView', function() {
     tableIndexOfElement: function tableIndexOfElement(el) {
       // Returns the table index of the given HTML element / jQuery object, which can be anything
       // from the TR down.
-      // var pageIndex = this.$('tbody tr').index($(el).closest('tr'));
-      var pageIndex = $(el).closest('tr').index();
+
+      var tr = $(el).closest('tr');
+      if (tr.hasClass('table-view-child'))
+        tr = tr.prev();
+
+      var pageIndex = tr.index();
       console.assert(pageIndex !== -1, 'Did not find row.  Did you pass in an event instead of e.target?');
       return this.pageIndexToTableIndex(pageIndex);
     },
@@ -375,7 +442,7 @@ define('TableView', function() {
         return $();
 
       var pageIndex = this.pageSize ? (index - (this.page * this.pageSize)) : index;
-      return this.$('tbody > tr:not(.detail-row):eq(' + pageIndex + ')');
+      return this.$('tbody > tr:not(.table-view-child):eq(' + pageIndex + ')');
     },
 
     _highlightTableIndex: function(index) {
@@ -574,9 +641,12 @@ define('TableView', function() {
       var row = this.data[this.tableIndexOfElement(checkbox)];
       var cp = this.checkboxProperty;
       row[cp] = checkbox.prop('checked');
-      checkbox.closest('tr')
-        .next('tr.detail-row').addBack()
-        .toggleClass('warning', row[cp]);
+
+      var tr = $(e.target).closest('tr');
+      if (tr.hasClass('table-view-child'))
+        tr = tr.prev().addBack();
+
+      tr.toggleClass('warning', row[cp]);
     },
 
     add: function(data, options) {

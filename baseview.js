@@ -7,9 +7,20 @@ define('BaseView', function() {
     // By default, non-modal views (see BaseModalView below) do not support warning buttons. Set
     // to a selector identifying the submit / save button to enable 'ignore warning' support.
 
+    _invalid: false,
+
     _initPromises: null,
 
-    __viewStateTemplate: 'baseview/view-state',
+    _tempTemplate: null,
+    // A temporary template set via setTempTemplate.  When set, normal rendering functions are
+    // not called:
+    //
+    // - getTemplateContext
+    // - render
+    // - postRender
+    //
+    // This is useful for setting temporary views for loading states, errors, or "not found"
+    // messages.  (At this time the template is not passed a context.)
 
     constructor: function(options) {
 
@@ -65,10 +76,6 @@ define('BaseView', function() {
 
       if (!this._initPromises) {
         this._initPromises = [promise];
-
-        if (this.__state !== 'blank' && this.__state !== 'loading') {
-          this.setViewLoading();
-        }
       } else {
         this._initPromises.push(promise);
       }
@@ -77,9 +84,11 @@ define('BaseView', function() {
     onInitPromisesResolved: function() {
       // All of the init promises have completed.  Note that this is *not* called unless init
       // promises have been added.
-      if (!this.__state || this.__state === 'blank' || this.__state === 'loading') {
-        this.setViewNormal();
-      }
+
+      // The default behavior is to clear temporary templates and re-render since they are
+      // typically used for loading messages.
+
+      this.clearTempTemplate();
     },
 
     onInitPromisesFailed: function() {
@@ -88,40 +97,14 @@ define('BaseView', function() {
       // example, we already have a global ajax error handler.
     },
 
-    setViewBlank: function() {
-      if (this.__viewState !== 'blank') {
-        this.__viewState = 'blank';
-        if (this.el) {
+    invalidate: function() {
+      if (!this._invalid) {
+        this._invalid = true;
+        setTimeout(function() {
+          this._invalid = false;
           this.render();
-        }
+        }.bind(this), 0);
       }
-      return this;
-    },
-
-    setViewLoading: function() {
-      if (this.__viewState !== 'loading') {
-        this.__viewState = 'loading';
-        if (this.el) {
-          this.render();
-        }
-      }
-      return this;
-    },
-
-    setViewNotFound: function() {
-      this.__viewState = 'not-found';
-      if (this.el) {
-        this.render();
-      }
-      return this;
-    },
-
-    setViewNormal: function() {
-      delete this.__viewState;
-      if (this.el) {
-        this.render();
-      }
-      return this;
     },
 
     _cleanUp: function() {
@@ -138,13 +121,32 @@ define('BaseView', function() {
       Backbone.View.prototype.remove.call(this);
     },
 
+    setTempTemplate: function(template) {
+      // Sets a temporary template that overrides the normal template.  If the template name
+      // has not already been set, the view will be re-rendered with the template.
+
+      console.assert(typeof template === 'string');
+
+      if (template !== this._tempTemplate) {
+        this._tempTemplate = template;
+        this.invalidate();
+      }
+    },
+
+    clearTempTemplate: function() {
+      if (this._tempTemplate) {
+        this._tempTemplate = null;
+        this.invalidate();
+      }
+    },
+
     render: function(ctx) {
       // A default render method that uses `this.template` as a Handlebars template.  If no
       // context is provided (the default), this.model will be used.  If not defined,
       // this.collection will be used.
 
-      if (this.__viewState) {
-        this.renderTemplate(this.__viewStateTemplate, { state: this.__viewState });
+      if (this._tempTemplate) {
+        this.renderTemplate(this._tempTemplate);
         return this;
       }
 

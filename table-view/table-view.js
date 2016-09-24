@@ -26,7 +26,8 @@ define('TableView', function() {
       'change input[type=checkbox]': 'onCheckboxChange',
       'click input[type=checkbox]' : '_checkboxToggled',
       'click th.base-table-checkheader' : '_handleCheckboxMenuClick',
-      'base-table:change-page': 'onChangePage'
+      'base-table:change-page': 'onChangePage',
+      'click th:not(.base-table-checkheader)': 'onSort'
     },
 
     initialize: function(options) {
@@ -78,6 +79,11 @@ define('TableView', function() {
         // Seems a bit hacky, but we need to add the checkboxes to the table head.
         this.showCheckboxes({ render: false });
       }
+
+      this.sortInfo = null;
+      // If sorted, this will be an object containing:
+      // * idx: The zero based column index
+      // * asc: true if sorted ascending, false if descending
 
       if (this.data.length)
         this.renderPage();
@@ -167,31 +173,42 @@ define('TableView', function() {
       // - sort function: Accepts two items and returns -1,0,1.
 
       this.colInfos = this.columns.map(function(col) {
-        var info = $.extend({}, col);
+        var info = {
+          render: null,
+          sort: null
+        };
 
-        var render = determineRender(info);
+        // Determine type.  It may not be possible at this point if the values are all null.
 
-        // Careful: Don't copy typeInfo into col since typeInfo can have a 'render' function,
-        // but *any* rendering settings in col (template, etc.) should be override anything in
-        // typeInfo.  That's why we call determineRender with the raw col first, *then* do a
-        // type lookup.
-
-        if (render == null) {
-          var type = determineType(col, this.data);
-          if (type) {
-            var typeInfo = typeRegistry[type];
-            if (!typeInfo)
-              throw new Error('Column has type "' + type + '" which is not registered.');
-            // If you reference a function that doesn't exist in a module, like
-            // Formatting.formatBogus, you'll get hard to track down errors.
-            console.assert(noNulls(typeInfo), 'Null values in typeInfo for type "' + type + '"');
-
-            $.extend(info, typeInfo);
-            render = determineRender(info);
-          }
+        var typeName = determineTypeName(col, this.data);
+        var type;
+        if (typeName) {
+          type = typeRegistry[typeName];
+          if (!type)
+            throw new Error('Column has type "' + typeName + '" which is not registered.');
         }
 
-        info.render = render ? render : renderUnknown;
+        // Determine render function.
+
+        info.render = determineRender(col, type);
+
+        // Determine sort function.  For now we'll simply use omniSort unless the user has
+        // provided one.
+
+        if (col.sort === false) {
+          // This means the column does not support sorting.  Leave sort out.
+        } else if (_.isFunction(col.sort)) {
+          info.sort = col.sort;
+        } else if (!col.sort && col.property) {
+          var options = {
+            // I plain on having a way to set these, such as having col.sort be an object with these.
+            nullsFirst: true,
+            blanksFirst: true
+          };
+          info.sort = omniSort(col.property, options);
+        } else if (col.sort) {
+          throw new Error("columns.sort must be `false` or a function");
+        }
 
         return info;
       }, this);
@@ -208,11 +225,35 @@ define('TableView', function() {
       return (this.page + 1) * this.pageSize;
     },
 
-    _getRenderObjects: function (start, stop) {
-      // An internal function called by renderPage to generate the objects for the templates.
-      //
-      // Note that renderPage will not modify the returned objects, so you may return the
-      // user's original data.
+    onSort: function(e) {
+      // The has clicked one of the table headers.
+      e.preventDefault();
+      e.stopPropagation();
+
+      var th   = $(e.target).closest('th');
+      var idx  = th.index();
+      var info = this.colInfos[idx];
+
+      if (!info.sort)
+        return;
+
+      if (this.sortInfo && this.sortInfo.idx === idx) {
+        // The user clicked the same column, so reverse the rows.
+        this.data.reverse();
+        this.sortInfo.asc = !this.sortInfo.asc;
+      } else {
+        this.data.sort(info.sort);
+        this.sortInfo = {
+          idx: idx,
+          asc: true
+        };
+      }
+
+      this.$('th').find('.fa-sort-asc,.fa-sort-desc').remove();
+      th.append('<span class="fa fa-sort-' + (this.sortInfo.asc ? 'asc' : 'desc') + '"></span>');
+
+      this.page = 0;
+      this.renderPage();
     },
 
     renderPage: function renderPage() {
@@ -278,8 +319,7 @@ define('TableView', function() {
 
         for (var iCol=0, cCols=cols.length; iCol < cCols; iCol++) {
           var col  = cols[iCol];
-          var data = col.property ? row[col.property] : null;
-          var html = escape(col.render(data, row));
+          var html = col.render(row);
 
           if (col.className)
             rowHTML.push('<td class="' + col.className + '">');
@@ -715,6 +755,17 @@ define('TableView', function() {
         return null;
       return new Row(this, index, this.data[index]);
     }
+  }, {
+    // Class properties
+
+    registerType: function(type, info) {
+      // Registers default column values for a "type".  You can refer to these in a column
+      // object with a type attribute:
+      //
+      // columns: [ property: 'x', type: 'accountId' ]
+
+      typeRegistry[type] = info;
+    }
   });
 
   function returnTrue() { return true; }
@@ -735,10 +786,10 @@ define('TableView', function() {
     return lhs - rhs;
   }
 
-  function renderUnknown(data, row) {
-    if (data == null)
+  function renderUnknown(value) {
+    if (value == null)
       return '';
-    return '' + data;
+    return '' + value;
   }
 
   var typeRegistry = {
@@ -764,89 +815,22 @@ define('TableView', function() {
     //
     // All of these must return either a string, which will be HTML encoded for security, or a
     // Handlebars.SafeString if it has already been encoded.
-
-    date: {
-      format: Formatting.formatDate,
-      sort: dateSort
-    },
-
-    timestamp: {
-      format: Formatting.formatTimestamp,
-      sort: dateSort
-    },
-
-    markdown: {
-      format: formatMarkdown
-    },
-
-    money: {
-      format: Formatting.formatMoney
-    },
-
-    workday: {
-      format: HumanDate.formatShortWorkday,
-      sort: dateSort
-    },
-
-    text: {
-      render: renderUnknown
-    }
   };
 
-  function registerType(type, info) {
-    typeRegistry[type] = info;
-  }
-
-  function formatMarkdown(value) {
-    console.assert(value == null || typeof(value) === 'string', 'markdown not a string?: ' + typeof(value) + ' ' + value);
-    if (!value)
-      return '';
-    var html = marked(value);
-    return new Handlebars.SafeString(html);
-  }
-
-  function typeFromValue(value) {
-    // Given a Javascript object, see if we know the type.
-    if (value instanceof Date)
-      return 'date';
-    if (moment.isMoment(value))
-      return 'date';
-    if (typeof(value) === 'string')
-      return 'text';
-    return undefined;
-  }
-
-  function determineType(col, rows) {
+  function determineTypeName(col, rows) {
     if (col.type) {
       if (!typeRegistry[col.type])
         throw new Error('Table column has type "' + col.type + '" which is not a registered type.');
       return col.type;
     }
-
-    // See if we can identify the type automatically.
-
-    // If there is a 'property' attribute, it is the name of the attribute in the row object.
-    // Scan down looking for a non-null value.
-
-    if (col.property) {
-      var prop = col.property;
-
-      for (var i=0, c=rows.length; i < c; i++) {
-        var v = rows[i][prop];
-        if (v != null) {
-          return typeFromValue(v);
-        }
-      }
-    }
-
     return undefined;
   }
 
-  function determineRender(col) {
+  function determineRender(col, type) {
     // Return a render function for the given column.
     //
-    // - col: The column configuration passed in by the user, augmented by items from the type
-    //   registery if a type was configured or determined.
+    // - col: The column configuration passed in by the user.
+    // - type: Optional type object from the type registry.
     //
     // A render function has the following signature:
     //
@@ -859,41 +843,46 @@ define('TableView', function() {
     //   "property" attribute was not provided, this will be null or undefined.
     // - row: The original row object passed into the TableView construtor.
 
-    if (col.render)
-      return col.render;
+    var property;
 
-    if (col.template) {
+    type = type || {};
+
+    var render = col.render || type.render;
+    if (render)
+      return render;
+
+    var tmpl = col.template || type.template;
+    if (tmpl) {
       // The user has specified a Handlebars template, so simply wrap it to take the same
       // parameters as a render function.
-      var tmpl = col.template;
 
       if (typeof(tmpl) === 'string')
         tmpl = Handlebars.compile(tmpl);
 
-      return function(data, row) {
-        return new Handlebars.SafeString(tmpl(row));
-      };
+      return tmpl;
     }
 
-    if (col.format) {
+    var fmt = col.format || type.format;
+    if (fmt) {
       if (!col.property) {
         console.error('Column has format but no property:', col);
         throw new Error('Column has format but no property');
       }
-      var fmt = col.format;
       console.assert(typeof(fmt) !== 'string', 'columns.format should be a function, not string.  Did you mean "type"?');
-      return function(data, row) {
-        return fmt(data);
+      property = col.property;
+      return function(row) {
+        return Handlebars.escapeExpression(fmt(row[property]));
       };
     }
 
     if (col.link) {
       if (!col.property)
         throw new Error('Column has "link" but no "property"');
-      tmpl = Handlebars.compile('<a href="' + col.link + '">{{' + col.property + '}}</a>');
-      return function(data, row) {
-        return new Handlebars.SafeString(tmpl(row));
-      };
+      return Handlebars.compile('<a href="' + col.link + '">{{' + col.property + '}}</a>');
+    }
+
+    if (col.property) {
+      return Handlebars.compile('{{' + col.property + '}}');
     }
 
     return null;
@@ -906,6 +895,90 @@ define('TableView', function() {
     if (bad.length)
       console.log('Null values in configuration: keys=' + bad.join(',') + ' obj=', obj);
     return (bad.length === 0);
+  }
+
+  var OMNISORT_DEFAULTS = {
+    ascending: true,
+    nullsFirst: true,
+    blanksFirst: true
+  };
+
+  function omniSort(property, options) {
+    // Returns a generic sort comparator that can be used with Array sort.
+    //
+    // This won't be very fast since it has to determine the data types for every comparison,
+    // so if you know the types used an optimized function.
+    //
+    // property: The property to sort by.
+    //
+    // options: A hash of sort options.
+    //   - nullsFirst: If true, the default, null and undefined values are sorted before
+    //     non-null values.
+    //   - blanksFirst: If true, the default, zero-length strings sort before other strings.
+
+    options = _.extend({}, OMNISORT_DEFAULTS, options);
+
+    var nullsFirst  = !!options.nullsFirst;
+    var blanksFirst = !!options.blanksFirst;
+
+    return function(lhs, rhs) {
+
+      lhs = lhs[property];
+      rhs = rhs[property];
+
+      // Handle cases where one or both are null.
+
+      if (lhs == null) {
+        if (rhs == null)
+          return 0;
+        return nullsFirst ? -1 : 1;
+      }
+
+      if (rhs == null) {
+        return nullsFirst ? 1 : -1;
+      }
+
+      var typeLHS = typeof(lhs);
+      var typeRHS = typeof(rhs);
+
+      // Handle strings.
+
+      if (typeLHS === 'string' && typeRHS === 'string') {
+        // First check for either being zero length.
+
+        if (lhs.length === 0) {
+          if (rhs.length === 0)
+            return 0;
+          return blanksFirst ? -1 : 1;
+        }
+
+        if (rhs.length === 0)
+          return blanksFirst ? 1 : -1;
+
+        // Otherwise use localeCompare (though it is apparently very slow).
+        return lhs.localeCompare(rhs);
+      }
+
+      // Handle numbers
+
+      if (typeLHS === 'number' && typeRHS === 'number') {
+        // This will cause NaN to stay in the same place (but we won't return NaN like we would
+        // if we tried subtracting the two).
+        return (rhs === lhs) ? 0 : (rhs > lhs) ? -1 : 1;
+      }
+
+      // Dates (and Moment objects) have a valueOf method that returns a number.  Booleans
+      // objects also have a valueOf that returns the native Boolean value.
+
+      if (lhs.valueOf && rhs.valueOf) {
+        return lhs.valueOf() - rhs.valueOf();
+      }
+
+      // At this point we have two objects we really can't compare.  We'll assert in debug but
+      // in production we'll simply keep the same order.
+      console.assert(false, 'Sort cannot compare objects of different types:', lhs, rhs);
+      return 0;
+    };
   }
 
   return TableView;

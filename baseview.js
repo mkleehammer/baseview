@@ -365,5 +365,11 @@ define('BaseView', function() {
     oldClean(elems);
   };
 
+  function getOwnProperty(obj, prop) {
+    if (obj.hasOwnProperty(prop))
+      return obj[prop];
+    return undefined;
+  }
+
   return BaseView;
 });

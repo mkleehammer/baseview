@@ -175,7 +175,8 @@ define('TableView', function() {
       this.colInfos = this.columns.map(function(col) {
         var info = {
           render: null,
-          sort: null
+          sort: null,
+          className: col.className
         };
 
         // Determine type.  It may not be possible at this point if the values are all null.

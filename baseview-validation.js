@@ -304,8 +304,13 @@
       // options:
       // - blur
 
+      var val = target.val();
+      // This can be null, not always an empty string.
+      if (val)
+        val = val.trim();
+
       options.col = settings.col;
-      var result = settings.func(target.val().trim(), target, options);
+      var result = settings.func(val, target, options);
 
       target.closest('.form-group').find('.help-block.validation').remove();
 

@@ -835,13 +835,11 @@ define('TableView', function() {
     //
     // A render function has the following signature:
     //
-    //     render(data, row)
+    //     render(row)
     //
     // It must return either HTML as a string or HTML wrapped in a Handlebars.SafeString
     // object.  The parameters are:
     //
-    // - data: The value for the current column, extracted using `row[col.property]`.  If a
-    //   "property" attribute was not provided, this will be null or undefined.
     // - row: The original row object passed into the TableView construtor.
 
     var property;

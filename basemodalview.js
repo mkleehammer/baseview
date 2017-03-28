@@ -80,7 +80,10 @@ define('BaseModalView', function() {
       // etc., you need to use the className item above!
       console.assert(this.__modal.length === 1, 'Modal needs 1 .modal not ' + this.__modal.length);
 
-      this.__modal.modal('show');
+      // TODO
+      console.log('Show the modal: $el=', this.$el);
+      this.$el.css('display', 'block');
+
 
       // Emit an event on the *class* that we just displayed a modal.  This allows
       // testing frameworks to monitor things.
